@@ -1,0 +1,84 @@
+version: '3.6'
+services:
+  Elasticsearch:
+    image: elasticsearch:7.16.3
+    container_name: elasticsearch
+    restart: always
+    volumes:
+    - elastic_data:/usr/share/elasticsearch/data/
+    environment:
+      ES_JAVA_OPTS: "-Xmx256m -Xms256m"
+      discovery.type: single-node    
+    ports:
+    - '9200:9200'
+    - '9300:9300'
+    networks:
+      - elk
+
+  Logstash:
+    image: logstash:7.16.3
+    container_name: logstash
+    restart: always
+    volumes:
+    - ./logstash/:/home/mastdon/elk/logstash/
+    command: logstash -f /home/mastdon/elk/logstash/logstash.conf 
+    depends_on:
+      - Elasticsearch
+    ports:
+    - '9600:9600'
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"    
+    networks:
+      - elk
+
+  Kibana:
+    image: kibana:7.16.3
+    container_name: kibana
+    restart: always       
+    ports:
+    - '5601:5601'
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200  
+    depends_on:
+      - Elasticsearch  
+    networks:
+      - elk
+
+  fleet:
+    image: docker.elastic.co/beats/elastic-agent:7.16.3
+    healthcheck:
+      test: "curl -f http://127.0.0.1:8220/api/status | grep HEALTHY 2>&1 >/dev/null"
+      retries: 12
+      interval: 5s
+    hostname: fleet
+    container_name: fleet
+    restart: always
+    user: root
+    environment:
+    - FLEET_SERVER_ENABLE=1
+    - "FLEET_SERVER_ELASTICSEARCH_HOST=http://192.168.31.220:9200"
+    - FLEET_SERVER_ELASTICSEARCH_USERNAME=elastic
+    - FLEET_SERVER_ELASTICSEARCH_PASSWORD=1234
+#    - FLEET_SERVER_ELASTICSEARCH_CA=$CERTS_DIR/ca/ca.crt AAEAAWVsYXN0aWMvZmxlZXQtc2VydmVyL3Rva2VuLTE2NTg4NDM2NjYwMDk6RWNwRkN6MG1RbzYzd3ZjSmxCd00wUQ
+    - "FLEET_SERVER_SERVICE_TOKEN=AAEAAWVsYXN0aWMvZmxlZXQtc2VydmVyL3Rva2VuLTE2NTg4NDM2NjYwMDk6RWNwRkN6MG1RbzYzd3ZjSmxCd00wUQ"
+    - FLEET_SERVER_INSECURE_HTTP=1
+    - KIBANA_FLEET_SETUP=1
+    - "KIBANA_FLEET_HOST=http://192.168.31.220:5601"
+#    - KIBANA_FLEET_USERNAME=elastic
+#    - KIBANA_FLEET_PASSWORD=1234
+#    - KIBANA_FLEET_CA=$CERTS_DIR/ca/ca.crt
+    - FLEET_ENROLL=1
+    ports:
+      - 8220:8220
+
+    depends_on:
+      - Kibana
+    networks:
+      - elk
+#    volumes:
+#       - certs:$CERTS_DIR
+volumes:
+  elastic_data: {}
+
+networks:
+  elk:
